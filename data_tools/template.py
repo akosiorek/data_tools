@@ -12,7 +12,7 @@ def constrain_dims(a, b, DIM):
     return ai, max(bi, 0)
 
 
-def convert_dtype(imgs, dtype):
+def convert_img_dtype(imgs, dtype):
     if dtype == np.uint8:
         imgs = (imgs - imgs.min()) / (imgs.max() / 255.)
         imgs = imgs.astype(np.uint8)
@@ -39,11 +39,17 @@ class TemplateDataset(object):
         for i, (tjs, seq_templates) in enumerate(itertools.izip(coords, templates)):
             for tj, template in zip(tjs, seq_templates):
                 for t in xrange(len(tj)):
-                    self._combine(canvas[t, i], template, tj[t])
+                    self._blend(canvas[t, i], template, tj[t])
 
-        return convert_dtype(canvas, dtype)
+        return convert_img_dtype(canvas, dtype)
 
-    def _combine(self, canvas, template, pos):
+    def _blend(self, canvas, template, pos):
+        """Blends `template` into `canvas` at position given by `pos`
+
+        :param canvas:
+        :param template:
+        :param pos:
+        """
 
         template_shape = template.shape[:2]
         height, width = canvas.shape[:2]
@@ -58,11 +64,26 @@ class TemplateDataset(object):
 
         y0, y1 = min(max(y0, 0), height), max(min(y1, height), 0)
         x0, x1 = min(max(x0, 0), width), max(min(x1, width), 0)
-        
-        canvas[y0:y1, x0:x1] = np.maximum(canvas[y0:y1, x0:x1], template[yt0:yt1, xt0:xt1])
+
+        # canvas[y0:y1, x0:x1] = np.maximum(canvas[y0:y1, x0:x1], template[yt0:yt1, xt0:xt1])
+        self._blend_slice(canvas, template, (y0, y1, x0, x1), (yt0, yt1, xt0, xt1))
+
+    @staticmethod
+    def _blend_slice(canvas, template, dst, src):
+        """Merges the slice of `template` given by indices in `src` into the slice of `canvas` given by indices `dst`.
+
+        :param canvas:
+        :param template:
+        :param dst:
+        :param src:
+        """
+        current = canvas[dst[0]:dst[1], dst[2]:dst[3]]
+        target = template[src[0]:src[1], src[2]:src[3]]
+        canvas[dst[0]:dst[1], dst[2]:dst[3]] = np.maximum(current, target)
 
 
 class RandomTemplateDataset(TemplateDataset):
+    # TODO: Refactor to use the base class more than just the constructor!
 
     def __init__(self, canvas_size, n_timesteps, templates, trajectory, batch_size=1, n_templates_per_seq=1):
         super(RandomTemplateDataset, self).__init__(canvas_size, n_timesteps)
@@ -105,7 +126,7 @@ class RandomTemplateDataset(TemplateDataset):
             seq_trajectories = trajectory[:, st:ed]
             for t in xrange(self.n_timesteps):
                 for i, template in enumerate(seq_templates):
-                    self._combine(canvas[t, b], template, seq_trajectories[t, i])
+                    self._blend(canvas[t, b], template, seq_trajectories[t, i])
             per_seq_trajectories.append(seq_trajectories)
             if with_presence:
                 per_seq_presence.append(presence[st:ed])
